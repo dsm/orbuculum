@@ -15,6 +15,7 @@
 #include "generics.h"
 
 #define MAX_STRLEN (4096) // Maximum length of debug string
+#define _POSIX_ARG_MAX 4096
 
 // ====================================================================================================
 char *genericsEscape( char *str )

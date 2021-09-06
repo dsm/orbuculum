@@ -10,15 +10,23 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <ctype.h>
+#ifdef WIN32
+    #include <winsock2.h>
+#else
+    #include <sys/ioctl.h>
+    #include <netinet/in.h>
+    #include <netdb.h>
+#endif
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
 #include <inttypes.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
+#ifdef WIN32
+#else
+    #include <termios.h>
+#endif
 
 #include "nw.h"
 #include "git_version_info.h"
@@ -26,6 +34,11 @@
 #include "tpiuDecoder.h"
 #include "itmDecoder.h"
 #include "msgDecoder.h"
+
+#ifdef WIN32
+    // https://stackoverflow.com/a/14388707/995351
+    #define SO_REUSEPORT SO_REUSEADDR 
+#endif
 
 #define NUM_CHANNELS  32
 #define HW_CHANNEL    (NUM_CHANNELS)      /* Make the hardware fifo on the end of the software ones */
@@ -351,7 +364,7 @@ int _processOptions( int argc, char *argv[] )
 {
     int c;
     char *chanConfig;
-    uint chan;
+    unsigned int chan;
     char *chanIndex;
 #define DELIMITER ','
 
@@ -567,8 +580,13 @@ int socketFeeder( void )
     ssize_t t;
     int flag = 1;
 
-    sockfd = socket( AF_INET, SOCK_STREAM, 0 );
-    setsockopt( sockfd, SOL_SOCKET, SO_REUSEPORT, &flag, sizeof( flag ) );
+    #ifdef WIN32
+    WSADATA wsaData;
+    WSAStartup(MAKEWORD(2, 2), &wsaData);
+    #endif
+
+    sockfd = socket( AF_INET, SOCK_STREAM, IPPROTO_TCP );
+    setsockopt( sockfd, SOL_SOCKET, SO_REUSEPORT, (const void*)&flag, sizeof( flag ) );
 
     if ( sockfd < 0 )
     {
@@ -577,7 +595,7 @@ int socketFeeder( void )
     }
 
     /* Now open the network connection */
-    bzero( ( char * ) &serv_addr, sizeof( serv_addr ) );
+    memset( ( char * ) &serv_addr, 0, sizeof( serv_addr ) );
     server = gethostbyname( options.server );
 
     if ( !server )
@@ -587,9 +605,10 @@ int socketFeeder( void )
     }
 
     serv_addr.sin_family = AF_INET;
-    bcopy( ( char * )server->h_addr,
-           ( char * )&serv_addr.sin_addr.s_addr,
-           server->h_length );
+    memcpy( ( char * )&serv_addr.sin_addr.s_addr,
+            ( const char * )server->h_addr,
+            server->h_length
+    );
     serv_addr.sin_port = htons( options.port );
 
     if ( connect( sockfd, ( struct sockaddr * ) &serv_addr, sizeof( serv_addr ) ) < 0 )
@@ -598,7 +617,8 @@ int socketFeeder( void )
         return -1;
     }
 
-    while ( ( t = read( sockfd, cbw, TRANSFER_SIZE ) ) > 0 )
+    // while ( ( t = read( sockfd, cbw, TRANSFER_SIZE ) ) >= 0 )
+    while ( ( t = recv( sockfd, (void*)cbw, TRANSFER_SIZE, 0) ) > 0 )
     {
         unsigned char *c = cbw;
 

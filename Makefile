@@ -86,7 +86,7 @@ INCLUDE_PATHS += -I/usr/local/include/libusb-1.0
 LDLIBS = -L. -L/usr/local/lib -lusb-1.0 -ldl -lncurses -lpthread -lintl -L$(OLOC) -l$(ORBLIB)
 else
 INCLUDE_PATHS += -I/usr/local/include/libusb-1.0
-LDLIBS = -L. -L/usr/local/lib -lusb-1.0 -ldl -lncurses -L$(OLOC) -l$(ORBLIB)
+LDLIBS = -L. -L/usr/local/lib -lusb-1.0 -ldl -lncurses -L$(OLOC) -l$(ORBLIB) -lWs2_32
 endif
 
 ifdef LINUX
