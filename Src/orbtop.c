@@ -8,14 +8,19 @@
 
 #include <fcntl.h>
 #include <ctype.h>
+#ifdef WIN32
+    #include <winsock2.h>
+#else
+    #include <sys/socket.h>
+    #include <sys/ioctl.h>
+    #include <netinet/in.h>
+    #include <netdb.h>
+#endif
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <stdio.h>
 #include <assert.h>
 #include <inttypes.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
 
 #include "cJSON.h"
 #include "generics.h"
@@ -27,6 +32,11 @@
 #include "symbols.h"
 #include "msgSeq.h"
 #include "nw.h"
+
+#ifdef WIN32
+    // https://stackoverflow.com/a/14388707/995351
+    #define SO_REUSEPORT SO_REUSEADDR
+#endif
 
 #define CUTOFF              (10)             /* Default cutoff at 0.1% */
 #define TOP_UPDATE_INTERVAL (1000)           /* Interval between each on screen update */
@@ -1119,6 +1129,11 @@ int main( int argc, char *argv[] )
         exit( -EINVAL );
     }
 
+    #ifdef WIN32
+    WSADATA wsaData;
+    WSAStartup(MAKEWORD(2, 2), &wsaData);
+    #endif
+
     /* Reset the TPIU handler before we start */
     TPIUDecoderInit( &_r.t );
     ITMDecoderInit( &_r.i, options.forceITMSync );
@@ -1153,7 +1168,7 @@ int main( int argc, char *argv[] )
         {
             /* Get the socket open */
             sourcefd = socket( AF_INET, SOCK_STREAM, 0 );
-            setsockopt( sourcefd, SOL_SOCKET, SO_REUSEPORT, &flag, sizeof( flag ) );
+            setsockopt( sourcefd, SOL_SOCKET, SO_REUSEPORT, (const void*)&flag, sizeof( flag ) );
 
             if ( sourcefd < 0 )
             {
@@ -1161,7 +1176,7 @@ int main( int argc, char *argv[] )
                 return -EIO;
             }
 
-            if ( setsockopt( sourcefd, SOL_SOCKET, SO_REUSEADDR, &( int )
+            if ( setsockopt( sourcefd, SOL_SOCKET, SO_REUSEADDR, (const void*)&( int )
         {
             1
         }, sizeof( int ) ) < 0 )
@@ -1171,7 +1186,7 @@ int main( int argc, char *argv[] )
             }
 
             /* Now open the network connection */
-            bzero( ( char * ) &serv_addr, sizeof( serv_addr ) );
+            memset( ( char * ) &serv_addr, 0, sizeof( serv_addr ) );
             server = gethostbyname( options.server );
 
             if ( !server )
@@ -1181,9 +1196,10 @@ int main( int argc, char *argv[] )
             }
 
             serv_addr.sin_family = AF_INET;
-            bcopy( ( char * )server->h_addr,
-                   ( char * )&serv_addr.sin_addr.s_addr,
-                   server->h_length );
+            memcpy( ( char * )&serv_addr.sin_addr.s_addr,
+                    ( const char * )server->h_addr,
+                    server->h_length
+            );
             serv_addr.sin_port = htons( options.port );
 
             if ( connect( sourcefd, ( struct sockaddr * ) &serv_addr, sizeof( serv_addr ) ) < 0 )
@@ -1241,7 +1257,8 @@ int main( int argc, char *argv[] )
 
             if ( r > 0 )
             {
-                t = read( sourcefd, cbw, TRANSFER_SIZE );
+                // t = read( sourcefd, cbw, TRANSFER_SIZE );
+                t = recv( sourcefd, (void*)cbw, TRANSFER_SIZE, 0 );
 
                 if ( t <= 0 )
                 {
@@ -1316,6 +1333,8 @@ int main( int argc, char *argv[] )
                 {
                     genericsReport( V_WARN, "Got a TPIU sync while decoding ITM...did you miss a -t option?" EOL );
                 }
+
+                fflush(stdout);
             }
         }
 
