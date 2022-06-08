@@ -301,6 +301,7 @@ print-%:
 pretty:
 	$(Q)-$(ASTYLE) --options=config/astyle.conf "Inc/*.h" "Src/*.c"
 
+ifdef WINDOWS
 .PHONY: dist_win_zip
 
 dist_win_zip:
@@ -317,6 +318,6 @@ dist_win_zip:
 
 	-@echo "Creating archive $(OLOC)/orbuculum_win.zip"
 	$(Q)(cd $(OLOC)/dist_win && zip ../orbuculum_win.zip *)
-
+endif
 
 -include $(PDEPS)
